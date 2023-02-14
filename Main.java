@@ -90,15 +90,15 @@ public class Main{
                 else if (cache.getKind().equals("full")) {
                     caches[i] = new NWayAssociative(cache.getName(), cache.getSize(), cache.getLine_size(), 1, cache.getReplacement_policy(), last);
                 }
-                else {
-                    int setSize = Character.getNumericValue(cache.getKind().charAt(0));
-                    caches[i] = new NWayAssociative(cache.getName(), cache.getSize(), cache.getLine_size(), setSize, cache.getReplacement_policy(), last);
-                }
+//                else {
+//                    int setSize = Character.getNumericValue(cache.getKind().charAt(0));
+//                    caches[i] = new NWayAssociative(cache.getName(), cache.getSize(), cache.getLine_size(), setSize, cache.getReplacement_policy(), last);
+//                }
             }
             reader.close();
             
             caches[0].printConfig();
-            System.out.println(caches[0].getFreeEntries().get(0));
+            System.out.println(caches[0].getSetSize());
             
             // Reading the trace file given by the second argument relative to the current working directory line by line
             FileReader trace = new FileReader(System.getProperty("user.dir") + "/" + args[1]);

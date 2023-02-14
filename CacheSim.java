@@ -1,6 +1,5 @@
 import java.util.HashMap;
 import java.util.LinkedHashSet;
-import java.util.LinkedList;
 
 /**
  * Abstract class for caches from which all other caches are based off of
@@ -10,15 +9,17 @@ abstract class Cache {
     protected int size;
     protected int lineSize;
     protected int setCount;
+    protected int setSize;
     protected String replacementPolicy;
     protected int hits;
     protected int misses;
     protected int offsetBitShift;
     protected int indexMask;
     protected int tagBitShift;
-    protected HashMap<Integer, LinkedHashSet<Long>> entries;  // Key value pair of an index and tag(s) for a given cache line
-    protected HashMap<Integer, Integer> freeEntries; // Key value pair showing how many entries are free for a given set in the cache
-    protected boolean last;
+    protected long[][] entries;  // Key value pair of an index and tag(s) for a given cache line
+    protected int[] cacheLinePtr;
+    protected int[] setCapacity;
+    boolean last;
 
     public String getName() {
         return name;
@@ -60,16 +61,24 @@ abstract class Cache {
         return tagBitShift;
     }
 
-    public HashMap<Integer, LinkedHashSet<Long>> getEntries() {
+    public long[][] getEntries() {
         return entries;
     }
 
-    public HashMap<Integer, Integer> getFreeEntries() {
-        return freeEntries;
+    public int getSetSize() {
+        return this.setSize;
     }
 
-    public boolean isLast() {
-        return last;
+    public void setSetSize(int setSize) {
+        this.setSize = setSize;
+    }
+
+    public int[] getSetCapacity() {
+        return this.setCapacity;
+    }
+
+    public void setSetCapacity(int[] setCapacity) {
+        this.setCapacity = setCapacity;
     }
 
     /**
@@ -79,7 +88,6 @@ abstract class Cache {
      * @param lineSize              size of a line in the cache
      * @param setCount               size of a set in the cache
      * @param replacementPolicy     the replacement policy for this cache
-     * @param last                  whether this is the last cache in the hierarchy
      */
     public Cache(String name, int size, int lineSize, int setCount, String replacementPolicy, boolean last) {
         this.name = name;
@@ -89,14 +97,11 @@ abstract class Cache {
         this.replacementPolicy = replacementPolicy;
         this.hits = 0;
         this.misses = 0;
-        this.entries = new HashMap<>();
-        this.freeEntries = new HashMap<>();
+        this.setSize = size / lineSize / setCount;
+        this.entries = new long[setCount][this.setSize];
+        this.cacheLinePtr = new int[setCount];
+        this.setCapacity = new int[setCount];
         this.last = last;
-
-        for (int i = 0; i < setCount; i++) {
-            this.entries.put(i, new LinkedHashSet<>());
-            this.freeEntries.put(i, size / lineSize / setCount);
-        }
     }
 
     /**
@@ -132,12 +137,13 @@ abstract class Cache {
         CacheLine cacheLine = this.getCacheLine(memAddr);
         int index = cacheLine.getIndex();
         long tag = cacheLine.getTag();
-        if (this.entries.get(index).contains(tag)) {
+        if (this.find(index, tag)) {
             this.hits++;
             return true;
         }
+
         this.misses++;
-        if (this.freeEntries.get(index) > 0) {
+        if (this.setCapacity[index] < this.setSize) {
             this.insert(index, tag);
             return true;
         }
@@ -154,6 +160,7 @@ abstract class Cache {
      */
     abstract void evict(int index);
     abstract void insert(int index, long tag);
+    abstract boolean find(int index, long tag);
 
     abstract CacheLine getCacheLine(long memAddr);
 }
@@ -208,16 +215,19 @@ class DirectMapped extends Cache {
      * @param index the index to evict from for a given cache
      */
     protected void evict(int index) {
-        for (long tag : this.entries.get(index)) {
-            this.entries.get(index).remove(tag);
-            break;
-        }
-        this.freeEntries.put(index, this.freeEntries.get(index) + 1);
+        this.entries[index][0] = -1;
+        this.cacheLinePtr[index] = 0;
+        this.setCapacity[index] = 0;
     }
 
     protected void insert(int index, long tag) {
-        this.entries.get(index).add(tag);
-        this.freeEntries.put(index, this.freeEntries.get(index) - 1);
+        this.entries[index][0] = tag;
+        this.cacheLinePtr[index]++;
+        this.setCapacity[index] = 1;
+    }
+
+    public boolean find(int index, long tag) {
+        return this.entries[index][0] == tag;
     }
 }
 
@@ -238,143 +248,99 @@ class NWayAssociative extends Cache {
     protected void evict(int index) {
         switch (this.replacementPolicy) {
             case "lru":
-                long evictim = this.lru.getFirst(index);
-                this.entries.get(index).remove(evictim);
-                this.lru.remove(index, evictim);
+                int lineIndex = this.lru.getHead(index).getIndex();
+                this.entries[index][lineIndex] = -1;
+                this.lru.remove(index, lineIndex);
+                this.cacheLinePtr[index] = lineIndex;
                 break;
             case "lfu":
                 break;
             default:
-                for (long tag : this.entries.get(index)) {
-                    this.entries.get(index).remove(tag);
-                    break;
-                }
+                this.entries[index][this.cacheLinePtr[index]] = -1;
         }
-        this.freeEntries.put(index, this.freeEntries.get(index) + 1);
+        this.setCapacity[index]--;
     }
 
     protected void insert(int index, long tag) {
-        this.entries.get(index).add(tag);
-        this.freeEntries.put(index, this.freeEntries.get(index) - 1);
+        this.entries[index][this.cacheLinePtr[index]] = tag;
+
         switch (this.replacementPolicy) {
             case "lru":
-                this.lru.update(index, tag);
+                this.lru.update(index, this.cacheLinePtr[index]);
                 break;
             case "lfu":
                 break;
         }
+
+        this.cacheLinePtr[index] = ++this.cacheLinePtr[index] % this.setSize;
+        this.setCapacity[index]++;
     }
 
     @Override
     CacheLine getCacheLine(long memAddr) {
         return new CacheLine(0, memAddr);
     }
-}
 
-class LinkedListNode {
-    private long val;
-    private LinkedListNode prev;
-    private LinkedListNode next;
-
-    private int freq;
-
-    public LinkedListNode() {
-    }
-
-    public LinkedListNode(long val, LinkedListNode prev, LinkedListNode next) {
-        this.val = val;
-        this.prev = prev;
-        this.next = next;
-    }
-
-    public LinkedListNode(int freq, long val, LinkedListNode prev, LinkedListNode next) {
-        this.freq = freq;
-        this.val = val;
-        this.prev = prev;
-        this.next = next;
-    }
-
-    public long getVal() {
-        return this.val;
-    }
-
-    public void setVal(long val) {
-        this.val = val;
-    }
-
-    public LinkedListNode getPrev() {
-        return this.prev;
-    }
-
-    public void setPrev(LinkedListNode prev) {
-        this.prev = prev;
-    }
-
-    public LinkedListNode getNext() {
-        return next;
-    }
-
-    public void setNext(LinkedListNode next) {
-        this.next = next;
-    }
-
-    public int getFreq() {
-        return this.freq;
-    }
-
-    public void setFreq(int freq) {
-        this.freq = freq;
+    public boolean find(int index, long tag) {
+        switch (this.replacementPolicy) {
+            case "lru":
+                for (int i = 0; i < this.setSize; i++) {
+                    if (this.entries[index][i] == tag) {
+                        this.lru.update(index, i);
+                        return true;
+                    }
+                }
+                break;
+            default:
+                for (int i = 0; i < this.setSize; i++) {
+                    if (this.entries[index][i] == tag) {
+                        return true;
+                    }
+                }
+        }
+        return false;
     }
 }
 
 class LRU {
-    private HashMap<Integer, LinkedHashSet<LinkedListNode>> lru;
-    private LinkedListNode tail;
-    private HashMap<Integer, HashMap<Long, LinkedListNode>> tagToNode;
+    private HashMap<Integer, DoublyLinkedList> lru;
+    private HashMap<Integer, HashMap<Integer, LinkedListNode>> indexToNode;
 
     public LRU(int setCount) {
         this.lru = new HashMap<>();
-        this.tagToNode = new HashMap<>();
+        this.indexToNode = new HashMap<>();
         for (int i = 0; i < setCount; i++) {
-            lru.put(i, new LinkedHashSet<>());
-            tagToNode.put(i, new HashMap<>());
+            lru.put(i, new DoublyLinkedList());
+            indexToNode.put(i, new HashMap<>());
         }
-        tail = new LinkedListNode();
     }
 
-    public void update(int index, long tag) {
-        if (this.tagToNode.get(index).containsKey(tag)) {
-            this.remove(index, tag);
+    public void update(int setIndex, int lineIndex) {
+        if (this.indexToNode.get(setIndex).containsKey(lineIndex)) {
+            LinkedListNode node = this.indexToNode.get(setIndex).get(lineIndex);
+            this.lru.get(setIndex).remove(node);
         }
-        LinkedListNode temp = tail;
-        tail = new LinkedListNode(tag, tail, null);
-        temp.setNext(tail);
-        this.lru.get(index).add(tail);
-        this.tagToNode.get(index).put(tag, tail);
+        LinkedListNode node = new LinkedListNode(lineIndex);
+        this.lru.get(setIndex).append(node);
+        this.indexToNode.get(setIndex).put(lineIndex, node);
     }
 
-    public void remove(int index, long tag) {
-        LinkedListNode node = this.tagToNode.get(index).get(tag);
-        node.getPrev().setNext(node.getNext());
-        node.getNext().setPrev(node.getPrev());
-        this.lru.get(index).remove(node);
-        this.tagToNode.get(index).remove(tag);
+    public void remove(int setIndex, int lineIndex) {
+        LinkedListNode node = this.indexToNode.get(setIndex).get(lineIndex);
+        this.lru.get(setIndex).remove(node);
+        this.indexToNode.get(setIndex).remove(lineIndex);
     }
 
-    public long getFirst(int index) {
-        for (LinkedListNode node : lru.get(index)) {
-            return node.getVal();
-        }
-        return 0;
+    public LinkedListNode getHead(int index) {
+        return this.lru.get(index).getHead();
     }
-
 }
-//
+
 //class LFU {
 //    // break tie by index of lines in trace file, eject earlier line
 //    HashMap<Integer, LinkedHashSet<LinkedListNode>> indexNodeList;
 //    HashMap<Integer, HashMap<Integer, LinkedHashSet<LinkedListNode>>> indexFreqList;
-//    HashMap<Integer, HashMap<Integer, Integer>> indexFreqTail;
+//    HashMap<Integer, HashMap<Integer, LinkedListNode>> indexFreqTail;
 //    HashMap<Integer, Integer> indexMinFreq;
 //
 //    public LFU(int setCount) {
@@ -395,7 +361,11 @@ class LRU {
 //        if (this.indexMinFreq.get(index) == freq && this.indexFreqList.get(index).size() == 0) {
 //            this.indexMinFreq.put(index, freq + 1);
 //        }
+//
 //        node.setFreq(freq + 1);
+//        freq = node.getFreq();
+//        if (!this.indexFreqTail.get(index).containsKey(freq)) {
+//            this.indexFreqTail.get(index).put(freq, new LinkedListNode());
+//        }
 //
 //    }
-//}

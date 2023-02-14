@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="cache_traces">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/trace-files/cache_traces.zip!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>

@@ -70,7 +70,7 @@ class DoublyLinkedList {
 class LFUNode {
     private int cacheLine;
     private int freq;
-
+//TODO multilevel cache
     public LFUNode(int cacheLine, int freq) {
         this.cacheLine = cacheLine;
         this.freq = freq;

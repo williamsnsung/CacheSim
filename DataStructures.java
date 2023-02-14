@@ -5,17 +5,10 @@ class LinkedListNode {
     private LinkedListNode prev;
     private LinkedListNode next;
 
-    private int freq;
-
     public LinkedListNode() {
     }
 
     public LinkedListNode(int index) {
-        this.index = index;
-    }
-
-    public LinkedListNode(int index, int freq) {
-        this.freq = freq;
         this.index = index;
     }
 
@@ -38,14 +31,6 @@ class LinkedListNode {
     public void setNext(LinkedListNode next) {
         this.next = next;
     }
-
-    public int getFreq() {
-        return this.freq;
-    }
-
-    public void setFreq(int freq) {
-        this.freq = freq;
-    }
 }
 
 class DoublyLinkedList {
@@ -55,13 +40,6 @@ class DoublyLinkedList {
     public DoublyLinkedList() {
         tail = new LinkedListNode();
         nodes = new LinkedHashSet<>();
-    }
-
-    public boolean contains(LinkedListNode node) {
-        if (nodes.contains(node)) {
-            return true;
-        }
-        return false;
     }
 
     public void remove(LinkedListNode node) {
@@ -86,5 +64,27 @@ class DoublyLinkedList {
             return node;
         }
         return new LinkedListNode();
+    }
+}
+
+class LFUNode {
+    private int cacheLine;
+    private int freq;
+
+    public LFUNode(int cacheLine, int freq) {
+        this.cacheLine = cacheLine;
+        this.freq = freq;
+    }
+
+    public int getCacheLine() {
+        return this.cacheLine;
+    }
+
+    public int getFreq() {
+        return this.freq;
+    }
+
+    public void setFreq(int freq) {
+        this.freq = freq;
     }
 }

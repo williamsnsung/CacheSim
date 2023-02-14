@@ -88,12 +88,12 @@ public class Main{
                     caches[i] = new DirectMapped(cache.getName(), cache.getSize(), cache.getLine_size(), last);
                 }
                 else if (cache.getKind().equals("full")) {
-                    caches[i] = new NWayAssociative(cache.getName(), cache.getSize(), cache.getLine_size(), 1, cache.getReplacement_policy(), last);
+                    caches[i] = new NWayAssociative(cache.getName(), cache.getSize(), cache.getLine_size(), cache.getSize() / cache.getLine_size(), cache.getReplacement_policy(), last);
                 }
-//                else {
-//                    int setSize = Character.getNumericValue(cache.getKind().charAt(0));
-//                    caches[i] = new NWayAssociative(cache.getName(), cache.getSize(), cache.getLine_size(), setSize, cache.getReplacement_policy(), last);
-//                }
+                else {
+                    int setSize = Character.getNumericValue(cache.getKind().charAt(0));
+                    caches[i] = new NWayAssociative(cache.getName(), cache.getSize(), cache.getLine_size(), setSize, cache.getReplacement_policy(), last);
+                }
             }
             reader.close();
             

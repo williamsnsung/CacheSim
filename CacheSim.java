@@ -1,5 +1,6 @@
+import java.util.Comparator;
 import java.util.HashMap;
-import java.util.LinkedHashSet;
+import java.util.TreeSet;
 
 /**
  * Abstract class for caches from which all other caches are based off of
@@ -86,22 +87,29 @@ abstract class Cache {
      * @param name                  name of the cache
      * @param size                  size of the cache
      * @param lineSize              size of a line in the cache
-     * @param setCount               size of a set in the cache
+     * @param setSize               size of a set in the cache
      * @param replacementPolicy     the replacement policy for this cache
      */
-    public Cache(String name, int size, int lineSize, int setCount, String replacementPolicy, boolean last) {
+    public Cache(String name, int size, int lineSize, int setSize, String replacementPolicy, boolean last) {
         this.name = name;
         this.size = size;
         this.lineSize = lineSize;
-        this.setCount = setCount;
+        this.setSize = setSize;
         this.replacementPolicy = replacementPolicy;
         this.hits = 0;
         this.misses = 0;
-        this.setSize = size / lineSize / setCount;
+        this.setCount = size / (lineSize * setSize);
         this.entries = new long[setCount][this.setSize];
         this.cacheLinePtr = new int[setCount];
         this.setCapacity = new int[setCount];
         this.last = last;
+
+        int indexBits =  log2(this.setCount);
+        this.offsetBitShift = log2(lineSize);
+        this.tagBitShift = this.offsetBitShift + indexBits;
+        for (int i = 0; i < indexBits; i++) {
+            this.indexMask += Math.pow(2, i);
+        }
     }
 
     /**
@@ -162,7 +170,11 @@ abstract class Cache {
     abstract void insert(int index, long tag);
     abstract boolean find(int index, long tag);
 
-    abstract CacheLine getCacheLine(long memAddr);
+    public CacheLine getCacheLine(long memAddr) {
+        int index = (int) (memAddr >> this.getOffsetBitShift() & this.getIndexMask());
+        long tag = memAddr >> this.getTagBitShift();
+        return new CacheLine(index, tag);
+    }
 }
 
 class CacheLine {
@@ -195,13 +207,7 @@ class DirectMapped extends Cache {
      * @param last If this cache is last in the hierarchy
      */
     public DirectMapped(String name, int size, int lineSize, boolean last) {
-        super(name, size, lineSize, size / lineSize, "direct", last);
-        int indexBits =  log2(size / lineSize);
-        this.offsetBitShift = log2(lineSize);
-        this.tagBitShift = this.offsetBitShift + indexBits;
-        for (int i = 0; i < indexBits; i++) {
-            this.indexMask += Math.pow(2, i);
-        }
+        super(name, size, lineSize, 1, "direct", last);
     }
 
     public CacheLine getCacheLine(long memAddr) {
@@ -233,27 +239,34 @@ class DirectMapped extends Cache {
 
 class NWayAssociative extends Cache {
     LRU lru;
+    LFU lfu;
 
-    public NWayAssociative(String name, int size, int lineSize, int setCount, String replacementPolicy, boolean last) {
-        super(name, size, lineSize, setCount, replacementPolicy, last);
+    public NWayAssociative(String name, int size, int lineSize, int setSize, String replacementPolicy, boolean last) {
+        super(name, size, lineSize, setSize, replacementPolicy, last);
         switch (this.replacementPolicy) {
             case "lru":
                 lru = new LRU(this.setCount);
                 break;
             case "lfu":
+                lfu = new LFU(this.setCount);
                 break;
         }
     }
 
     protected void evict(int index) {
+        int cacheLine;
         switch (this.replacementPolicy) {
             case "lru":
-                int lineIndex = this.lru.getHead(index).getIndex();
-                this.entries[index][lineIndex] = -1;
-                this.lru.remove(index, lineIndex);
-                this.cacheLinePtr[index] = lineIndex;
+                cacheLine = this.lru.getHead(index).getIndex();
+                this.entries[index][cacheLine] = -1;
+                this.lru.remove(index, cacheLine);
+                this.cacheLinePtr[index] = cacheLine;
                 break;
             case "lfu":
+                cacheLine = this.lfu.getLFUCacheLine(index);
+                this.entries[index][cacheLine] = -1;
+                this.lfu.remove(index, cacheLine);
+                this.cacheLinePtr[index] = cacheLine;
                 break;
             default:
                 this.entries[index][this.cacheLinePtr[index]] = -1;
@@ -269,16 +282,12 @@ class NWayAssociative extends Cache {
                 this.lru.update(index, this.cacheLinePtr[index]);
                 break;
             case "lfu":
+                this.lfu.update(index, this.cacheLinePtr[index]);
                 break;
         }
 
         this.cacheLinePtr[index] = ++this.cacheLinePtr[index] % this.setSize;
         this.setCapacity[index]++;
-    }
-
-    @Override
-    CacheLine getCacheLine(long memAddr) {
-        return new CacheLine(0, memAddr);
     }
 
     public boolean find(int index, long tag) {
@@ -291,6 +300,13 @@ class NWayAssociative extends Cache {
                     }
                 }
                 break;
+            case "lfu":
+                for (int i = 0; i < this.setSize; i++) {
+                    if (this.entries[index][i] == tag) {
+                        this.lfu.update(index, i);
+                        return true;
+                    }
+                }
             default:
                 for (int i = 0; i < this.setSize; i++) {
                     if (this.entries[index][i] == tag) {
@@ -303,69 +319,116 @@ class NWayAssociative extends Cache {
 }
 
 class LRU {
-    private HashMap<Integer, DoublyLinkedList> lru;
-    private HashMap<Integer, HashMap<Integer, LinkedListNode>> indexToNode;
+    private DoublyLinkedList[] lru;
+    private HashMap<Integer, LinkedListNode>[] indexToNode;
 
     public LRU(int setCount) {
-        this.lru = new HashMap<>();
-        this.indexToNode = new HashMap<>();
+        this.lru = new DoublyLinkedList[setCount];
+        this.indexToNode = new HashMap[setCount];
         for (int i = 0; i < setCount; i++) {
-            lru.put(i, new DoublyLinkedList());
-            indexToNode.put(i, new HashMap<>());
+            this.lru[i] = new DoublyLinkedList();
+            this.indexToNode[i] = new HashMap<>();
         }
     }
 
     public void update(int setIndex, int lineIndex) {
-        if (this.indexToNode.get(setIndex).containsKey(lineIndex)) {
-            LinkedListNode node = this.indexToNode.get(setIndex).get(lineIndex);
-            this.lru.get(setIndex).remove(node);
+        if (this.indexToNode[setIndex].containsKey(lineIndex)) {
+            LinkedListNode node = this.indexToNode[setIndex].get(lineIndex);
+            this.lru[setIndex].remove(node);
         }
         LinkedListNode node = new LinkedListNode(lineIndex);
-        this.lru.get(setIndex).append(node);
-        this.indexToNode.get(setIndex).put(lineIndex, node);
+        this.lru[setIndex].append(node);
+        this.indexToNode[setIndex].put(lineIndex, node);
     }
 
     public void remove(int setIndex, int lineIndex) {
-        LinkedListNode node = this.indexToNode.get(setIndex).get(lineIndex);
-        this.lru.get(setIndex).remove(node);
-        this.indexToNode.get(setIndex).remove(lineIndex);
+        LinkedListNode node = this.indexToNode[setIndex].get(lineIndex);
+        this.lru[setIndex].remove(node);
+        this.indexToNode[setIndex].remove(lineIndex);
     }
 
     public LinkedListNode getHead(int index) {
-        return this.lru.get(index).getHead();
+        return this.lru[index].getHead();
     }
 }
 
-//class LFU {
-//    // break tie by index of lines in trace file, eject earlier line
-//    HashMap<Integer, LinkedHashSet<LinkedListNode>> indexNodeList;
-//    HashMap<Integer, HashMap<Integer, LinkedHashSet<LinkedListNode>>> indexFreqList;
-//    HashMap<Integer, HashMap<Integer, LinkedListNode>> indexFreqTail;
-//    HashMap<Integer, Integer> indexMinFreq;
-//
-//    public LFU(int setCount) {
-//        this.indexNodeList = new HashMap<>();
-//        this.indexFreqList = new HashMap<>();
-//        this.indexFreqTail = new HashMap<>();
-//        this.indexMinFreq = new HashMap<>();
-//        for (int i = 0; i < setCount; i++) {
-//            this.indexNodeList.put(i, new LinkedHashSet<>());
-//            this.indexFreqList.put(i, new HashMap<>());
-//            this.indexMinFreq.put(i, 0);
-//        }
-//    }
-//
-//    protected void update(int index, LinkedListNode node) {
-//        int freq = node.getFreq();
-//        this.indexFreqList.get(index).remove(node);
-//        if (this.indexMinFreq.get(index) == freq && this.indexFreqList.get(index).size() == 0) {
-//            this.indexMinFreq.put(index, freq + 1);
-//        }
-//
-//        node.setFreq(freq + 1);
-//        freq = node.getFreq();
-//        if (!this.indexFreqTail.get(index).containsKey(freq)) {
-//            this.indexFreqTail.get(index).put(freq, new LinkedListNode());
-//        }
-//
-//    }
+class LFU {
+    // break tie by index of lines in trace file, eject earlier line
+    private HashMap<Integer, LFUNode>[] nodeMap;
+    private HashMap<Integer, TreeSet<LFUNode>>[] freqSetMap;
+    private int[] minFreqMap;
+
+    public HashMap<Integer, LFUNode>[] getNodeMap() {
+        return this.nodeMap;
+    }
+
+    public void setNodeMap(HashMap<Integer, LFUNode>[] nodeMap) {
+        this.nodeMap = nodeMap;
+    }
+
+    public HashMap<Integer, TreeSet<LFUNode>>[] getFreqSetMap() {
+        return this.freqSetMap;
+    }
+
+    public void setFreqSetMap(HashMap<Integer, TreeSet<LFUNode>>[] freqSetMap) {
+        this.freqSetMap = freqSetMap;
+    }
+
+    public int[] getMinFreqMap() {
+        return this.minFreqMap;
+    }
+
+    public void setMinFreqMap(int[] minFreqMap) {
+        this.minFreqMap = minFreqMap;
+    }
+
+    //TODO get correct results
+    public LFU(int setCount) {
+        this.nodeMap = new HashMap[setCount];
+        this.freqSetMap = new HashMap[setCount];
+        this.minFreqMap = new int[setCount];
+        for (int i = 0; i < setCount; i++) {
+            this.nodeMap[i] = new HashMap<>();
+            this.freqSetMap[i] = new HashMap<>();
+        }
+    }
+
+    protected void update(int index, int cacheLine) {
+        if (this.nodeMap[index].containsKey(cacheLine)) {
+            LFUNode node = this.nodeMap[index].get(cacheLine);
+            int freq = node.getFreq();
+            this.freqSetMap[index].get(freq).remove(node);
+            if (this.minFreqMap[index] == freq && this.freqSetMap[index].get(freq).size() == 0) {
+                this.freqSetMap[index].remove(freq);
+                this.minFreqMap[index]++;
+            }
+            node.setFreq(++freq);
+            this.appendFreqNode(index, freq, node);
+        }
+        else {
+            LFUNode node = new LFUNode(cacheLine, 1);
+            this.nodeMap[index].put(cacheLine, node);
+            this.appendFreqNode(index, 1, node);
+            this.minFreqMap[index] = 1;
+        }
+    }
+
+    public void remove(int index, int cacheLine) {
+        LFUNode node = this.nodeMap[index].get(cacheLine);
+        this.freqSetMap[index].get(node.getFreq()).remove(node);
+        this.nodeMap[index].remove(cacheLine);
+    }
+
+    protected void appendFreqNode(int index, int freq, LFUNode node) {
+        if (!this.freqSetMap[index].containsKey(freq)) {
+            this.freqSetMap[index].put(freq, new TreeSet<>(Comparator.comparing(LFUNode::getCacheLine)));
+        }
+        this.freqSetMap[index].get(freq).add(node);
+    }
+
+    public int getLFUCacheLine(int index) {
+        int minFreq = this.minFreqMap[index];
+        LFUNode lfuNode = this.freqSetMap[index].get(minFreq).first();
+        return lfuNode.getCacheLine();
+    }
+}

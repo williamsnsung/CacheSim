@@ -16,7 +16,7 @@ abstract class Cache {
     protected long[][] entries;  // Key value pair for set indices and tag(s), n sets x m cache lines
     protected int[] cacheLinePtr; // Points to a possible next cache line to insert into for a given set
     protected int[] setCapacity; // How many free lines are available for a given set
-    boolean last; // whether this is the last cache in the hierarchy
+    protected Cache child; // The next cache in the hierarchy
 
     /**
      * Returns the name of the cache
@@ -90,6 +90,10 @@ abstract class Cache {
         return this.setSize;
     }
 
+    public void setChild(Cache child) {
+        this.child = child;
+    }
+
     /**
      * Constructor for a cache, initialises the data structures used along with assigning the given parameters to its attributes
      * @param name                  Name of the cache
@@ -97,9 +101,8 @@ abstract class Cache {
      * @param lineSize              Size of a line in the cache
      * @param setSize               Size of a set in the cache
      * @param replacementPolicy     The replacement policy for this cache
-     * @param last                  Whether this set is the last member of the cache hierarchy
      */
-    public Cache(String name, int size, int lineSize, int setSize, String replacementPolicy, boolean last) {
+    public Cache(String name, int size, int lineSize, int setSize, String replacementPolicy) {
         this.name = name;
         this.size = size;
         this.lineSize = lineSize;
@@ -111,7 +114,6 @@ abstract class Cache {
         this.entries = new long[setCount][this.setSize];
         this.cacheLinePtr = new int[setCount];
         this.setCapacity = new int[setCount];
-        this.last = last;
 
         // Below calculated as per lectures
         int indexBits =  log2(this.setCount);
@@ -134,41 +136,28 @@ abstract class Cache {
     }
 
     /**
-     * Prints the config of the current cache
-     */
-    public void printConfig() {
-        System.out.println("name: " + this.name);
-        System.out.println("size: " + this.size);
-        System.out.println("lineSize: " + this.lineSize);
-        System.out.println("setCount: " + this.setCount);
-        System.out.println("replacementPolicy: " + this.replacementPolicy);
-        System.out.println();
-    }
-
-    /**
      * Checks if the current tag is cached for a given index, adding to the hit/miss count appropriately.
      * Loads the tag into the current cache if it's last in the hierarchy, as you would then be retrieving from memory
      * @param memAddr The memory address converted into a long
      * @return Boolean, if it was a hit or a miss
      */
-    public boolean checkCache(long memAddr) {
+    public void checkCache(long memAddr) {
         CacheLine cacheLine = this.getCacheLine(memAddr);
         int index = cacheLine.getIndex();
         long tag = cacheLine.getTag();
         if (this.find(index, tag)) {
             this.hits++;
-            return true;
+            return;
         }
 
         this.misses++;
-
-        if (this.last) {
-            if (this.setCapacity[index] >= this.setSize) {
-                this.evict(index);
-            }
-            this.insert(index, tag);
+        if (this.child != null) {
+            this.child.checkCache(memAddr);
         }
-        return false;
+        if (this.setCapacity[index] >= this.setSize) {
+            this.evict(index);
+        }
+        this.insert(index, tag);
     }
 
     /**
@@ -231,10 +220,9 @@ class DirectMapped extends Cache {
      * @param name      The name of the cache
      * @param size      The size of the cache
      * @param lineSize  The size of a line in the cache
-     * @param last      If this cache is last in the hierarchy
      */
-    public DirectMapped(String name, int size, int lineSize, boolean last) {
-        super(name, size, lineSize, 1, "direct", last);
+    public DirectMapped(String name, int size, int lineSize) {
+        super(name, size, lineSize, 1, "direct");
     }
 
     /**
@@ -280,10 +268,9 @@ class NWayAssociative extends Cache {
      * @param lineSize              The size of a cache line in bytes
      * @param setSize               The size of a set in the cache
      * @param replacementPolicy     The replacement policy when the cache is full
-     * @param last                  Whether this cache is last in the hierarchy or not
      */
-    public NWayAssociative(String name, int size, int lineSize, int setSize, String replacementPolicy, boolean last) {
-        super(name, size, lineSize, setSize, replacementPolicy, last);
+    public NWayAssociative(String name, int size, int lineSize, int setSize, String replacementPolicy) {
+        super(name, size, lineSize, setSize, replacementPolicy);
         switch (this.replacementPolicy) {
             case "lru":
                 lru = new LRU(this.setCount);

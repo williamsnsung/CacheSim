@@ -82,21 +82,21 @@ public class Main{
                 CacheConfig cache = cachesJson.getCaches().get(i);
                 boolean last = i == caches.length - 1;
                 if (cache.getKind().equals("direct")) {
-                    caches[i] = new DirectMapped(cache.getName(), cache.getSize(), cache.getLine_size(), last);
+                    caches[i] = new DirectMapped(cache.getName(), cache.getSize(), cache.getLine_size());
                 }
                 else if (cache.getKind().equals("full")) {
-                    caches[i] = new NWayAssociative(cache.getName(), cache.getSize(), cache.getLine_size(), cache.getSize() / cache.getLine_size(), cache.getReplacement_policy(), last);
+                    caches[i] = new NWayAssociative(cache.getName(), cache.getSize(), cache.getLine_size(), cache.getSize() / cache.getLine_size(), cache.getReplacement_policy());
                 }
                 else {
                     int setSize = Character.getNumericValue(cache.getKind().charAt(0));
-                    caches[i] = new NWayAssociative(cache.getName(), cache.getSize(), cache.getLine_size(), setSize, cache.getReplacement_policy(), last);
+                    caches[i] = new NWayAssociative(cache.getName(), cache.getSize(), cache.getLine_size(), setSize, cache.getReplacement_policy());
+                }
+                if (i != 0) {
+                    caches[i - 1].setChild(caches[i]);
                 }
             }
             reader.close();
-            
-            caches[0].printConfig();
-            System.out.println(caches[0].getSetSize());
-            
+
             // Reading the trace file given by the second argument relative to the current working directory line by line
             FileReader trace = new FileReader(System.getProperty("user.dir") + "/" + args[1]);
             BufferedReader br = new BufferedReader(trace);
@@ -107,20 +107,12 @@ public class Main{
                 int blockSize = Integer.parseInt(lineData[3]);
                 long memAddr = Long.parseLong(lineData[1], 16);
                 long endAddr = memAddr + blockSize;
-                // For each cache in the hierarchy, check the relevant cache lines to see if they contain the needed bytes for the cache
-                for (Cache cache : caches) {
-                    boolean hit = true;
-                    memAddr = memAddr - memAddr % cache.getLineSize();
-                    while (memAddr < endAddr) {
-                        hit &= cache.checkCache(memAddr);
-                        memAddr += cache.getLineSize();
-                    }
-                    // If all the cache lines checked had a hit, then we can break, otherwise will need to check for the missing lines in lower levels of the hierarchy
-                    if (hit) {
-                        break;
-                    }
+                // Check if the memory address is in cache, check the relevant cache lines to see if they contain the needed bytes for the cache
+                memAddr = memAddr - memAddr % caches[0].getLineSize();
+                while (memAddr < endAddr) {
+                    caches[0].checkCache(memAddr);
+                    memAddr += caches[0].getLineSize();
                 }
-//                System.out.println(count + " " + caches[0].getHits() + " " + caches[0].getMisses());
             }
             System.out.println("done");
 

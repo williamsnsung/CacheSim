@@ -75,7 +75,7 @@ public class Main{
             // https://stackoverflow.com/questions/19169754/parsing-nested-json-data-using-gson [12/02/2023]
             Gson gson = new Gson();
             // Opens the file given by the first parameter relative to the current working directory
-            Reader reader = Files.newBufferedReader(Paths.get(System.getProperty("user.dir") + "/" + args[0]));
+            Reader reader = Files.newBufferedReader(Paths.get(args[0]));
             // Loading the json into a java object before creating the relevant caches and inserting them into the below array
             CacheList cachesJson = gson.fromJson(reader, CacheList.class);
             Cache[] caches = new Cache[cachesJson.getCaches().size()];
@@ -99,7 +99,7 @@ public class Main{
             reader.close();
 
             // Reading the trace file given by the second argument relative to the current working directory line by line
-            FileReader trace = new FileReader(System.getProperty("user.dir") + "/" + args[1]);
+            FileReader trace = new FileReader(args[1]);
             BufferedReader br = new BufferedReader(trace);
             String line;
             while ((line = br.readLine()) != null) {
@@ -140,8 +140,5 @@ public class Main{
         catch (Exception e) {
             System.err.println(e);
         }
-//        final long endTime = System.currentTimeMillis();
-
-//        System.err.println("Total execution time: " + (endTime - startTime));
     }
 }

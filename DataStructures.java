@@ -35,7 +35,7 @@ class LinkedListNode {
 
 class DoublyLinkedList {
     private LinkedListNode tail;
-    private LinkedHashSet<LinkedListNode> nodes;
+    private final LinkedHashSet<LinkedListNode> nodes;
 
     public DoublyLinkedList() {
         tail = new LinkedListNode();
@@ -68,7 +68,7 @@ class DoublyLinkedList {
 }
 
 class LFUNode {
-    private int cacheLine;
+    private final int cacheLine;
     private int freq;
 //TODO multilevel cache
     public LFUNode(int cacheLine, int freq) {

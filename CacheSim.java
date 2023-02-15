@@ -1,7 +1,3 @@
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.TreeSet;
-
 /**
  * Abstract class for caches from which all other caches are based off of
  */
@@ -197,7 +193,7 @@ abstract class Cache {
     abstract boolean find(int index, long tag);
 
     /**
-     * Converts a memory address into a CacheLine object, holding an index and a tag for its attribtues
+     * Converts a memory address into a CacheLine object, holding an index and a tag for its attributes
      * @param memAddr   The memory address to convert into a CacheLine object
      * @return          A CacheLine object created from the given memory address
      */
@@ -209,8 +205,8 @@ abstract class Cache {
 }
 
 class CacheLine {
-    private int index;
-    private long tag;
+    private final int index;
+    private final long tag;
 
     public CacheLine(int index, long tag) {
         this.index = index;
@@ -351,29 +347,20 @@ class NWayAssociative extends Cache {
      * @return      Returns whether the tag was found or not
      */
     public boolean find(int index, long tag) {
-        switch (this.replacementPolicy) {
-            case "lru":
-                for (int i = 0; i < this.setSize; i++) {
-                    if (this.entries[index][i] == tag) {
+        for (int i = 0; i < this.setSize; i++) {
+            if (this.entries[index][i] == tag) {
+                switch (this.replacementPolicy) {
+                    case "lru":
                         this.lru.update(index, i);
-                        return true;
-                    }
-                }
-                break;
-            case "lfu":
-                for (int i = 0; i < this.setSize; i++) {
-                    if (this.entries[index][i] == tag) {
+                        break;
+                    case "lfu":
                         this.lfu.update(index, i);
-                        return true;
-                    }
+                        break;
                 }
-            default:
-                for (int i = 0; i < this.setSize; i++) {
-                    if (this.entries[index][i] == tag) {
-                        return true;
-                    }
-                }
+                return true;
+            }
         }
+
         return false;
     }
 }

@@ -3,8 +3,8 @@ import java.util.HashMap;
 import java.util.TreeSet;
 
 class LRU {
-    private DoublyLinkedList[] lru;                             // Array of doubly linked lists, the index being a set number
-    private HashMap<Integer, LinkedListNode>[] indexToNode;     // Array of hashmaps, the index being a set number, the key being a cache line, value being a node
+    private final DoublyLinkedList[] lru;                             // Array of doubly linked lists, the index being a set number
+    private final HashMap<Integer, LinkedListNode>[] indexToNode;     // Array of hashmaps, the index being a set number, the key being a cache line, value being a node
 
     /**
      * Constructor for an LRU Cache, creates one for each set in the cache
@@ -56,9 +56,9 @@ class LRU {
 }
 
 class LFU {
-    private HashMap<Integer, LFUNode>[] nodeMap;            // An array of hashmaps, index representing a set, key being a cache line, value being a node
-    private HashMap<Integer, TreeSet<LFUNode>>[] freqSetMap;// An array of hashmaps, index representing a set, key being a frequency, value being an ordered set
-    private int[] minFreqMap;                               // An array, each index representing a set, value being the minimum frequency for that set
+    private final HashMap<Integer, LFUNode>[] nodeMap;            // An array of hashmaps, index representing a set, key being a cache line, value being a node
+    private final HashMap<Integer, TreeSet<LFUNode>>[] freqSetMap;// An array of hashmaps, index representing a set, key being a frequency, value being an ordered set
+    private final int[] minFreqMap;                               // An array, each index representing a set, value being the minimum frequency for that set
 
     /**
      * Constructor for an LFU Cache, creates one for each set in the cache

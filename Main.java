@@ -65,9 +65,6 @@ class CacheConfig {
         return this.replacement_policy;
     }
 
-    public void setReplacement_policy(String replacement_policy) {
-        this.replacement_policy = replacement_policy;
-    }
 }
 
 public class Main{
@@ -104,7 +101,6 @@ public class Main{
             FileReader trace = new FileReader(System.getProperty("user.dir") + "/" + args[1]);
             BufferedReader br = new BufferedReader(trace);
             String line;
-            int count = 0;
             while ((line = br.readLine()) != null) {
                 String[] lineData = line.split(" ");
                 // Find the size of the memory block to find in the cache
@@ -112,12 +108,12 @@ public class Main{
                 long memAddr = Long.parseLong(lineData[1], 16);
                 long endAddr = memAddr + blockSize;
                 // For each cache in the hierarchy, check the relevant cache lines to see if they contain the needed bytes for the cache
-                for (int i = 0; i < caches.length; i++) {
+                for (Cache cache : caches) {
                     boolean hit = true;
-                    memAddr = memAddr - memAddr % caches[i].getLineSize();
+                    memAddr = memAddr - memAddr % cache.getLineSize();
                     while (memAddr < endAddr) {
-                        hit &= caches[i].checkCache(memAddr);
-                        memAddr += caches[i].getLineSize();
+                        hit &= cache.checkCache(memAddr);
+                        memAddr += cache.getLineSize();
                     }
                     // If all the cache lines checked had a hit, then we can break, otherwise will need to check for the missing lines in lower levels of the hierarchy
                     if (hit) {
@@ -125,7 +121,6 @@ public class Main{
                     }
                 }
 //                System.out.println(count + " " + caches[0].getHits() + " " + caches[0].getMisses());
-                count++;
             }
             System.out.println("done");
 

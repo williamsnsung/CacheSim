@@ -90,6 +90,9 @@ abstract class Cache {
         return this.setSize;
     }
 
+    /**
+     * Sets the child attribute of the cache so that you know what cache is next in the hierarchy
+     */
     public void setChild(Cache child) {
         this.child = child;
     }
@@ -152,7 +155,7 @@ abstract class Cache {
 
         this.misses++;
         if (this.child != null) {
-            this.child.checkCache(memAddr);
+            this.child.checkCache(memAddr); // checks the next cache in the hierarchy to see if it has cached the memory address given
         }
         if (this.setCapacity[index] >= this.setSize) {
             this.evict(index);

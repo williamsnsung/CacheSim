@@ -7,7 +7,7 @@ import java.util.List;
 
 import com.google.gson.Gson;
 
-// The below two classes are used for the parsing of the cache config json
+// The below two classes are used for the parsing of the cache config json, attributes corresponding to the variables in the given json
 
 class CacheList {
     public List<CacheConfig> getCaches() {
@@ -109,13 +109,14 @@ public class Main{
                 long endAddr = memAddr + blockSize;
                 // Check if the memory address is in cache, check the relevant cache lines to see if they contain the needed bytes for the cache
                 memAddr = memAddr - memAddr % caches[0].getLineSize();
+                // Goes through each cache line that this memory block would use in the cache and checks them to see if they hold the relevant bits for the current block
                 while (memAddr < endAddr) {
-                    caches[0].checkCache(memAddr);
+                    caches[0].checkCache(memAddr); // Check cache will recursively seek the memory address in cache until it either gets it hit or reaches main memory
                     memAddr += caches[0].getLineSize();
                 }
             }
-            System.out.println("done");
 
+            // Prints a json of the hits and misses for each cache along with the number of main memory accesses to stdout
             System.out.println("{");
             System.out.println("\t\"main_memory_accesses\": " + caches[caches.length - 1].getMisses() + ",");
             System.out.println("\t\"caches\": [");
@@ -136,7 +137,7 @@ public class Main{
             System.out.println("}");
         }         
         catch (Exception e) {
-            System.out.println(e);
+            System.err.println(e);
         }
     }
 }

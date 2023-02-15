@@ -105,7 +105,7 @@ abstract class Cache {
      * @param setSize               Size of a set in the cache
      * @param replacementPolicy     The replacement policy for this cache
      */
-    public Cache(String name, int size, int lineSize, int setSize, String replacementPolicy) {
+    protected Cache(String name, int size, int lineSize, int setSize, String replacementPolicy) {
         this.name = name;
         this.size = size;
         this.lineSize = lineSize;

@@ -80,7 +80,6 @@ public class Main{
             Cache[] caches = new Cache[cachesJson.getCaches().size()];
             for (int i = 0; i < caches.length; i++) {
                 CacheConfig cache = cachesJson.getCaches().get(i);
-                boolean last = i == caches.length - 1;
                 if (cache.getKind().equals("direct")) {
                     caches[i] = new DirectMapped(cache.getName(), cache.getSize(), cache.getLine_size());
                 }

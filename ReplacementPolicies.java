@@ -1,21 +1,16 @@
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.TreeSet;
+import java.util.*;
 
 class LRU {
-    private final DoublyLinkedList[] lru;                             // Array of doubly linked lists, the index being a set number
-    private final HashMap<Integer, LinkedListNode>[] indexToNode;     // Array of hashmaps, the index being a set number, the key being a cache line, value being a node
+    private final LinkedHashSet<Integer>[] lru;                  // Linked HashSet of Linked List Nodes, the index being a set number
 
     /**
      * Constructor for an LRU Cache, creates one for each set in the cache
      * @param setCount The number of sets in the cache
      */
     public LRU(int setCount) {
-        this.lru = new DoublyLinkedList[setCount];
-        this.indexToNode = new HashMap[setCount];
+        this.lru = new LinkedHashSet[setCount];
         for (int i = 0; i < setCount; i++) {
-            this.lru[i] = new DoublyLinkedList();
-            this.indexToNode[i] = new HashMap<>();
+            this.lru[i] = new LinkedHashSet<>();
         }
     }
 
@@ -25,13 +20,8 @@ class LRU {
      * @param cacheLine The tag we would like to update
      */
     public void update(int index, int cacheLine) {
-        if (this.indexToNode[index].containsKey(cacheLine)) {
-            LinkedListNode node = this.indexToNode[index].get(cacheLine);
-            this.lru[index].remove(node);
-        }
-        LinkedListNode node = new LinkedListNode(cacheLine);
-        this.lru[index].append(node);
-        this.indexToNode[index].put(cacheLine, node);
+        this.lru[index].remove(cacheLine);
+        this.lru[index].add(cacheLine);
     }
 
     /**
@@ -40,9 +30,7 @@ class LRU {
      * @param cacheLine The tag to remove
      */
     public void remove(int index, int cacheLine) {
-        LinkedListNode node = this.indexToNode[index].get(cacheLine);
-        this.lru[index].remove(node);
-        this.indexToNode[index].remove(cacheLine);
+        this.lru[index].remove(cacheLine);
     }
 
     /**
@@ -50,15 +38,19 @@ class LRU {
      * @param index The set to get the head of
      * @return      The node of the head of the linked list
      */
-    public LinkedListNode getHead(int index) {
-        return this.lru[index].getHead();
+    public int getHead(int index) {
+        Iterator<Integer> iter = this.lru[index].iterator();
+        return iter.next();
     }
 }
 
 class LFU {
-    private final HashMap<Integer, LFUNode>[] nodeMap;            // An array of hashmaps, index representing a set, key being a cache line, value being a node
-    private final HashMap<Integer, TreeSet<LFUNode>>[] freqSetMap;// An array of hashmaps, index representing a set, key being a frequency, value being an ordered set
-    private final int[] minFreqMap;                               // An array, each index representing a set, value being the minimum frequency for that set
+    private final HashMap<Integer, LFUNode>[] nodeMap;              // An array of hashmaps, index representing a set, key being a cache line, value being a node
+                                                                    // Custom node is needed so that we can find the node in a frequency in constant time by storing its frequency
+    private final HashMap<Integer, TreeSet<LFUNode>>[] freqSetMap;  // An array of hashmaps, index representing a set, key being a frequency, value being an ordered set
+                                                                    // A TreeSet was chosen for storing the nodes as we need to order by cache line for tie breaking
+                                                                    // Using a TreeSet allows us to find, insert, and remove whilst maintaining an order in log(n) time
+    private final int[] minFreqMap;                                 // An array, each index representing a set, value being the minimum frequency for that set
 
     /**
      * Constructor for an LFU Cache, creates one for each set in the cache
@@ -120,7 +112,7 @@ class LFU {
      */
     protected void appendFreqNode(int index, int freq, LFUNode node) {
         if (!this.freqSetMap[index].containsKey(freq)) {
-            this.freqSetMap[index].put(freq, new TreeSet<>(Comparator.comparing(LFUNode::getCacheLine)));
+            this.freqSetMap[index].put(freq, new TreeSet<>(Comparator.comparing(LFUNode::getCacheLine)));   // tie breaking on cache line index
         }
         this.freqSetMap[index].get(freq).add(node);
     }

@@ -13,6 +13,7 @@ abstract class Cache {
     protected int offsetBitShift; // the number of bits to be right shifted to remove the offset
     protected int indexMask; // a mask which allows us to keep the index bits only
     protected int tagBitShift; // the number of bits to right shift to arrive at the tag
+    protected int tagMask; // a mask which allows us to keep the index bits only
     protected long[][] entries;  // Key value pair for set indices and tag(s), n sets x m cache lines
     protected int[] cacheLinePtr; // Points to a possible next cache line to insert into for a given set
     protected int[] setCapacity; // How many free lines are available for a given set
@@ -83,14 +84,6 @@ abstract class Cache {
     }
 
     /**
-     * Returns the maximum number of cache lines in a set
-     * @return An integer
-     */
-    public int getSetSize() {
-        return this.setSize;
-    }
-
-    /**
      * Sets the child attribute of the cache so that you know what cache is next in the hierarchy
      */
     public void setChild(Cache child) {
@@ -119,35 +112,24 @@ abstract class Cache {
         this.setCapacity = new int[setCount];
 
         // Below calculated as per lectures
-        int indexBits =  log2(this.setCount);
-        this.offsetBitShift = log2(lineSize);
+        // https://stackoverflow.com/questions/47074126/log2-of-an-integer-that-is-a-power-of-2 [12/02/2023]
+        int indexBits =  31 - Integer.numberOfLeadingZeros(this.setCount); // finding logs
+        this.offsetBitShift = 31 - Integer.numberOfLeadingZeros(lineSize);
         this.tagBitShift = this.offsetBitShift + indexBits;
         // Want a sequence of n ones for n index bits, with the rest being 0
-        for (int i = 0; i < indexBits; i++) {
-            this.indexMask += Math.pow(2, i);
-        }
-    }
-
-    /**
-     * Finds the base 2 log of a number
-     * @param n the number to be logged
-     * @return the result of the log operation
-     */
-    // https://www.geeksforgeeks.org/how-to-calculate-log-base-2-of-an-integer-in-java/ [12/02/2023]
-    public int log2(int n) {
-        return (int) (Math.log(n)/ Math.log(2));
+        // Sum of powers of is 2 ** (n + 1) - 1
+        this.indexMask = (1 << indexBits) - 1;
+        this.tagMask = (1 << lineSize - tagBitShift) - 1;
     }
 
     /**
      * Checks if the current tag is cached for a given index, adding to the hit/miss count appropriately.
      * Loads the tag into the current cache if it's last in the hierarchy, as you would then be retrieving from memory
      * @param memAddr The memory address converted into a long
-     * @return Boolean, if it was a hit or a miss
      */
     public void checkCache(long memAddr) {
-        CacheLine cacheLine = this.getCacheLine(memAddr);
-        int index = cacheLine.getIndex();
-        long tag = cacheLine.getTag();
+        int index = (int) (memAddr >> this.getOffsetBitShift() & this.getIndexMask()); // finding index and tag based off of the lecture slides
+        long tag = memAddr >> this.getTagBitShift() & this.tagMask;
         if (this.find(index, tag)) {
             this.hits++;
             return;
@@ -183,36 +165,8 @@ abstract class Cache {
      * @return      Whether it was found or not
      */
     abstract boolean find(int index, long tag);
-
-    /**
-     * Converts a memory address into a CacheLine object, holding an index and a tag for its attributes
-     * @param memAddr   The memory address to convert into a CacheLine object
-     * @return          A CacheLine object created from the given memory address
-     */
-    public CacheLine getCacheLine(long memAddr) {
-        int index = (int) (memAddr >> this.getOffsetBitShift() & this.getIndexMask());
-        long tag = memAddr >> this.getTagBitShift();
-        return new CacheLine(index, tag);
-    }
 }
 
-class CacheLine {
-    private final int index;
-    private final long tag;
-
-    public CacheLine(int index, long tag) {
-        this.index = index;
-        this.tag = tag;
-    }
-
-    public int getIndex() {
-        return index;
-    }
-
-    public long getTag() {
-        return tag;
-    }
-}
 class DirectMapped extends Cache {
 
     /**
@@ -292,7 +246,7 @@ class NWayAssociative extends Cache {
         int cacheLine;
         switch (this.replacementPolicy) {
             case "lru":
-                cacheLine = this.lru.getHead(index).getIndex();     // finding the head of the lru linked list
+                cacheLine = this.lru.getHead(index);     // finding the head of the lru linked list
                 this.entries[index][cacheLine] = -1;                // resetting the cache line entry
                 this.lru.remove(index, cacheLine);                  // removing the cache line entry from the lru object
                 this.cacheLinePtr[index] = cacheLine;               // setting the next free cache line to the current one

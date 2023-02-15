@@ -69,6 +69,7 @@ class CacheConfig {
 
 public class Main{
     public static void main(String[] args) {
+//        final long startTime = System.currentTimeMillis();
         try {
             // How to parse a JSON file in Java
             // https://stackoverflow.com/questions/19169754/parsing-nested-json-data-using-gson [12/02/2023]
@@ -80,15 +81,16 @@ public class Main{
             Cache[] caches = new Cache[cachesJson.getCaches().size()];
             for (int i = 0; i < caches.length; i++) {
                 CacheConfig cache = cachesJson.getCaches().get(i);
-                if (cache.getKind().equals("direct")) {
-                    caches[i] = new DirectMapped(cache.getName(), cache.getSize(), cache.getLine_size());
-                }
-                else if (cache.getKind().equals("full")) {
-                    caches[i] = new NWayAssociative(cache.getName(), cache.getSize(), cache.getLine_size(), cache.getSize() / cache.getLine_size(), cache.getReplacement_policy());
-                }
-                else {
-                    int setSize = Character.getNumericValue(cache.getKind().charAt(0));
-                    caches[i] = new NWayAssociative(cache.getName(), cache.getSize(), cache.getLine_size(), setSize, cache.getReplacement_policy());
+                switch (cache.getKind()) {
+                    case "direct":
+                        caches[i] = new DirectMapped(cache.getName(), cache.getSize(), cache.getLine_size());
+                        break;
+                    case "full":
+                        caches[i] = new NWayAssociative(cache.getName(), cache.getSize(), cache.getLine_size(), cache.getSize() / cache.getLine_size(), cache.getReplacement_policy());
+                        break;
+                    default:
+                        int setSize = Character.getNumericValue(cache.getKind().charAt(0));
+                        caches[i] = new NWayAssociative(cache.getName(), cache.getSize(), cache.getLine_size(), setSize, cache.getReplacement_policy());
                 }
                 if (i != 0) {
                     caches[i - 1].setChild(caches[i]);
@@ -138,5 +140,8 @@ public class Main{
         catch (Exception e) {
             System.err.println(e);
         }
+//        final long endTime = System.currentTimeMillis();
+
+//        System.err.println("Total execution time: " + (endTime - startTime));
     }
 }
